@@ -30,11 +30,13 @@ require([
 
         const mediaUrl = _.compose(_.prop('m'), _.prop('media'));
 
-        const srcs = _.compose(_.map(mediaUrl), _.prop('items'));
+        // const srcs = _.compose(_.map(mediaUrl), _.prop('items'));
 
         const img = url => $('<img />', { src: url });
 
-        const images = _.compose(_.map(img), srcs);
+        const mediaToImg = _.compose(img, mediaUrl);
+
+        const images = _.compose(_.map(mediaToImg), _.prop('items'));
 
         const renderImages = _.compose(Impure.setHtml('body'), images);
 
