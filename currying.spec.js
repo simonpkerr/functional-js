@@ -269,6 +269,137 @@ describe('Compose', () => {
 
     });
 
+    describe('examples', () => {
+        let cars = {};
+
+        beforeEach(() => {
+            cars = [{
+                name: 'Ferrari FF',
+                horsepower: 660,
+                dollar_value: 700000,
+                in_stock: true,
+            }, {
+                name: 'Spyker C12 Zagato',
+                horsepower: 650,
+                dollar_value: 648000,
+                in_stock: false,
+            }, {
+                name: 'Jaguar XKR-S',
+                horsepower: 550,
+                dollar_value: 132000,
+                in_stock: false,
+            }, {
+                name: 'Audi R8',
+                horsepower: 525,
+                dollar_value: 114200,
+                in_stock: false,
+            }, {
+                name: 'Aston Martin One-77',
+                horsepower: 750,
+                dollar_value: 1850000,
+                in_stock: true,
+            }, {
+                name: 'Pagani Huayra',
+                horsepower: 700,
+                dollar_value: 1300000,
+                in_stock: false,
+            }];
+        });
+
+        it('1 - rewriting a pointed function', () => {
+            var isLastInStock = function(cars) {
+                var last_car = _.last(cars);
+                return _.prop('in_stock', last_car);
+            };
+
+            const isLastInStock2 = _.compose(_.prop('in_stock'), _.last);
+
+            assert.equal(isLastInStock(cars), false);
+            assert.equal(isLastInStock2(cars), false);
+
+
+        });
+
+        it('2 - getting the name of the first car', () => {
+            const nameOfFirstCar = _.compose(_.prop('name'), _.head);
+
+            assert.equal(nameOfFirstCar(cars), 'Ferrari FF');
+        });
+
+        it('3 - refactor averageDollarValue', () => {
+            var _average = function(xs) {
+                return _.reduce(_.add, 0, xs) / xs.length;
+            };
+
+            var averageDollarValue = function(cars) {
+                var dollar_values = _.map(function(c) {
+                    return c.dollar_value;
+                }, cars);
+                return _average(dollar_values);
+            };
+
+
+            const averageDollarValue2 = _.compose(_average,_.map(c => c.dollar_value));
+
+            assert.equal(averageDollarValue(cars), 790700);
+            assert.equal(averageDollarValue2(cars), 790700);
+        });
+
+        it('4 - Sanitized car names', () => {
+            var _underscore = _.replace(/\W+/g, '_');
+
+            var sanitizeNames = _.map(_.compose(_underscore, _.toLower, _.prop('name')));
+            assert.deepEqual([
+                'ferrari_ff',
+                'spyker_c12_zagato',
+                'jaguar_xkr_s',
+                'audi_r8',
+                'aston_martin_one_77',
+                'pagani_huayra'
+            ], sanitizeNames(cars));
+        });
+
+        it('5 - refactor function using compose', () => {
+            var availablePrices = function(cars) {
+                var available_cars = _.filter(_.prop('in_stock'), cars);
+                return available_cars.map(function(x) {
+                    return x.dollar_value;
+                }).join(', ');
+            };
+
+            const availablePrices2 = _.compose(_.join(', '), _.map(_.prop('dollar_value')), _.filter(_.prop('in_stock')))
+
+            assert.equal('700000, 1850000', availablePrices(cars));
+            assert.equal('700000, 1850000', availablePrices2(cars));
+
+        });
+
+        it('6 - refactor to pointfree', () => {
+            const trace = _.curry((tag, x) => {
+                console.log(tag, x);
+                return x;
+            });
+
+            var fastestCar = function(cars) {
+                var sorted = _.sortBy(function(car) {
+                    return car.horsepower;
+                }, cars);
+                var fastest = _.last(sorted);
+                return fastest.name + ' is the fastest';
+            };
+
+            const concatSentence = _.curry((str1, str2) => `${str2} ${str1}`);
+
+            const fastestCar2 = _.compose(concatSentence('is the fastest'), _.prop('name'), _.last, _.sortBy(x => x.horsepower));
+
+            assert.equal('Aston Martin One-77 is the fastest', fastestCar(cars));
+            assert.equal('Aston Martin One-77 is the fastest', fastestCar2(cars));
+
+        });
+
+
+    });
+
 
 });
 
