@@ -406,25 +406,201 @@ describe('Compose', () => {
 /**
  * Functors allow you to call map over any object
  */
-xdescribe('Functors', () => {
-    it('can used map to map an object', () => {
+describe('Functors', () => {
 
-        const r = _.map(x => x + 1, Right(2));
-        console.log(r);
+    describe('Containers', () => {
+        var Container = function (x) {
+            this.__value = x;
+        };
 
-        /**
-         * use _.add(x,y) and map(f, x) to make a function
-         * that increments a value inside a functor
-         */
-        // const get = _.curry((x, o) => o[x]);
-        // const showWelcome = compose(_.add('Welcome '), get('name'));
-        // const checkActive = user => user.active ? Right(user) : Left('inactive');
-        //
-        // const result = _.compose(map(showWelcome), checkActive);
-        //
-        // assert.equal(Left('inactive'), result({ active: false, name: 'Gaz' }));
-        // assert.equal(Right('Welcome Simon'), result({ active: true, name: 'Simon' }));
+        Container.of = function (x) {
+            return new Container(x);
+        };
+
+        // (a -> b) -> Container a -> Container b
+        Container.prototype.map = function (f) {
+            return Container.of(f(this.__value));
+        };
+
+        it('use containers that can hold any value', () => {
+            assert.equal(2, Container.of(2).__value);
+            assert.equal('hot dog', Container.of('hot dog').__value);
+        });
+
+        it('can used map to map an object', () => {
+            assert.equal(4, Container.of(2).map(two => two + 2).__value);
+            assert.equal('FLAMETHROWER', Container.of('flamethrower').map(val => val.toUpperCase()).__value);
+
+            // create a container of the word 'bombs', map over it and concatenate it with the word ' away'
+            // this returns another Container, which is mapped over to get the length
+            assert.equal(10, Container.of('bombs').map(_.concat(' away')).map(_.prop('length')).__value);
+        });
+    });
+
+    describe('Maybe', () => {
+        var Maybe = function (x) {
+            this.__value = x;
+        };
+
+        Maybe.of = function (x) {
+            return new Maybe(x);
+        };
+
+        Maybe.prototype.isNothing = function (x) {
+            return (this.__value === null || this.__value === undefined);
+        };
+
+        // (a -> b) -> Maybe a -> Maybe b
+        Maybe.prototype.map = function (f) {
+            return this.isNothing() ? Maybe.of(null) : Maybe.of(f(this.__value));
+        };
+
+        var map = _.curry(function(f, functor) {
+            return functor.map(f);
+        });
+
+        it('can be used to safely handle values that can be null or undefined', () => {
+            const result1 = Maybe.of('Simon Phillip Kerr').map(_.match(/i/ig));
+            assert.deepEqual(['i', 'i', 'i'], result1.__value);
+
+            const result2 = Maybe.of(null).map(_.match(/i/ig));
+            assert.equal(null, result2.__value);
+
+            const result3 = Maybe.of({
+                id: 1,
+                name: 'Simon',
+                month: 'April'
+            })
+                .map(_.prop('age'))
+                .map(_.add(10));
+
+            assert.equal(null, result3.__value);
+
+            const result4 = Maybe.of({
+                id: 1,
+                name: 'Bob',
+                month: 'April',
+                age: 22
+            })
+                .map(_.prop('age'))
+                .map(_.add(10));
+
+            assert.equal(32, result4.__value);
+        });
+
+        it('can be used to safely get values', () => {
+            const safeHead = xs => Maybe.of(xs[0]);
+
+            const streetName = _.compose(map(_.prop('street')), safeHead, _.prop('addresses'));
+
+            const result1 = streetName({
+                addresses: []
+            });
+            assert.equal(null, result1.__value);
+
+            const result2 = streetName({
+                addresses: [{
+                    street: 'blah street'
+                }]
+            });
+
+            assert.equal('blah street', result2.__value);
+        });
 
     });
 
+    describe('Either', () => {
+        var Left = function(x) {
+            this.__value = x;
+        };
+
+        Left.of = function(x) {
+            return new Left(x);
+        };
+
+        Left.prototype.map = function(f) {
+            return this;
+        };
+
+        var Right = function(x) {
+            this.__value = x;
+        };
+
+        Right.of = function(x) {
+            return new Right(x);
+        };
+
+        Right.prototype.map = function(f) {
+            return Right.of(f(this.__value));
+        };
+
+        it('Right maps over the Container as normal', () => {
+            assert.equal('brain', Right.of('rain').map(str => `b${str}`).__value);
+        });
+
+        it('Left ignores any map and just returns the container', () => {
+            assert.equal('rain', Left.of('rain').map(str => `b${str}`).__value);
+        });
+
+        it('can be used to conditionally process, or else handle an error', () => {
+            const getAge = _.curry((year, yob) => {
+                const isValid = /\d{4}/.test(yob) && yob <= year;
+
+                if (!isValid) {
+                    return Left.of('Could not calculate age');
+                }
+
+                return Right.of(year - yob);
+            });
+
+            const getAgeFrom2017 = getAge(2017);
+
+            const result1 = getAgeFrom2017(2000);
+            assert.equal(17, result1.__value);
+
+            const result2 = getAgeFrom2017('blah');
+            assert.equal('Could not calculate age', result2.__value);
+        });
+    });
+
+    /**
+     * IO is used to wrap an impure function and return a pure one (?)
+     */
+    describe('IO', () => {
+        var IO = function(f) {
+            this.__value = f;
+        };
+
+        IO.of = function(x) {
+            return new IO(function() {
+                return x;
+            });
+        };
+
+        IO.prototype.map = function(f) {
+            return new IO(_.compose(f, this.__value));
+        };
+
+        it('can be used to safely manage impure elements', () => {
+            var io_window = new IO(() => window);
+
+            io_window.map(win => win.innerWidth);
+            
+            // console.log(io_window);
+            // assert.isAbove(io_window.__value(), 0);
+        });
+
+        it('can be used to get html elements from the dom', () => {
+            $ = selector => new IO(() => document.querySelectorAll(selector));
+
+            const div = document.createElement('div');
+            div.innerHTML = '<div id="myDiv">I am a div</div>';
+            document.body.appendChild(div);
+
+            const element = $('#myDiv').map(_.head).map(el => el.innerHTML);
+            assert.equal('I am a div', element.__value());
+
+            document.body.removeChild(div);
+        });
+    });
 });
