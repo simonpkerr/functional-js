@@ -52,6 +52,16 @@ Right.prototype.map = function(f) {
     return Right.of(f(this.__value));
 };
 
+// Each function should return the same type
+var Either = R.curry((f, g, e) => {
+    switch (e.constructor) {
+        case Left:
+            return f(e.__value);
+        case Right:
+            return g(e.__value);
+    }
+});
+
 var IO = function(f) {
     this.__value = f;
 

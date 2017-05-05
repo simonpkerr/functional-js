@@ -581,7 +581,7 @@ describe('Functors', () => {
                             title: 'Love them tasks',
                         })
                         : rej('invalid id')
-                }, 300);
+                }, 100);
             });
 
             // compositions and maps can still take place and nothing happens until fork is called
@@ -601,7 +601,7 @@ describe('Functors', () => {
                         title: 'Love them tasks',
                     })
                         : rej('invalid id')
-                }, 300);
+                }, 100);
             });
 
             // since the Task is rejected, it no longer tries to get the title prop
@@ -615,7 +615,7 @@ describe('Functors', () => {
         });
     });
 
-    describe('Exercises', () => {
+    describe('examples', () => {
         it('1 - increment a value in a functor', () => {
             // Use _.add(x,y) and _.map(f,x) to make a function that increments a value
             // inside a functor.
@@ -670,7 +670,7 @@ describe('Functors', () => {
                         id: i,
                         title: 'Love them tasks',
                     });
-                }, 300);
+                }, 100);
             });
 
             /**
@@ -696,10 +696,33 @@ describe('Functors', () => {
                 return user.active ? Right.of(user) : Left.of('Your account is not active');
             };
 
-            var login = checkActive.map(showWelcome);
-                // _.compose(showWelcome, checkActive);
+            var login = _.compose(_.map(showWelcome), checkActive);
 
-            console.log(login({ active: true, name: 'Simon' }));
+            assert.equal('Welcome Simon', login({ active: true, name: 'Simon' }).__value);
+            assert.equal('Your account is not active', login({ active: false, name: 'Bob'}).__value);
+        });
+        
+        it('7 - Write a validation function that checks for a length > 3. It should return Right(x) if it is greater than 3 and Left("You need > 3") otherwise. ', () => {
+            var ex7 = x => x.length > 3 ? Right.of(x) : Left.of('You need > 3');
+
+            assert.equal('You need > 3', ex7('hi').__value);
+            assert.equal('hello', ex7('hello').__value);
+        });
+
+        it('8 - save the user if they are valid ', () => {
+            var validateUsername = x => x.length > 3 ? Right.of(x) : Left.of('You need > 3');
+
+            const save = x => new IO(() => x + '-saved');
+            const fail = msg => new IO(() => msg);
+
+            /**
+             * the Either function takes a Left or Right and executes either a fail or success function
+             */
+            var validateAndSave = _.compose(Either(fail, save), validateUsername);
+
+            assert.equal('Simon-saved', validateAndSave('Simon').unsafePerformIO());
+            assert.equal('You need > 3', validateAndSave('Si').unsafePerformIO());
+
         });
     });
 });
