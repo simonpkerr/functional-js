@@ -409,18 +409,6 @@ describe('Compose', () => {
 describe('Functors', () => {
 
     describe('Containers', () => {
-        var Container = function (x) {
-            this.__value = x;
-        };
-
-        Container.of = function (x) {
-            return new Container(x);
-        };
-
-        // (a -> b) -> Container a -> Container b
-        Container.prototype.map = function (f) {
-            return Container.of(f(this.__value));
-        };
 
         it('use containers that can hold any value', () => {
             assert.equal(2, Container.of(2).__value);
@@ -438,22 +426,6 @@ describe('Functors', () => {
     });
 
     describe('Maybe', () => {
-        var Maybe = function (x) {
-            this.__value = x;
-        };
-
-        Maybe.of = function (x) {
-            return new Maybe(x);
-        };
-
-        Maybe.prototype.isNothing = function (x) {
-            return (this.__value === null || this.__value === undefined);
-        };
-
-        // (a -> b) -> Maybe a -> Maybe b
-        Maybe.prototype.map = function (f) {
-            return this.isNothing() ? Maybe.of(null) : Maybe.of(f(this.__value));
-        };
 
         var map = _.curry(function(f, functor) {
             return functor.map(f);
@@ -510,29 +482,6 @@ describe('Functors', () => {
     });
 
     describe('Either', () => {
-        var Left = function(x) {
-            this.__value = x;
-        };
-
-        Left.of = function(x) {
-            return new Left(x);
-        };
-
-        Left.prototype.map = function(f) {
-            return this;
-        };
-
-        var Right = function(x) {
-            this.__value = x;
-        };
-
-        Right.of = function(x) {
-            return new Right(x);
-        };
-
-        Right.prototype.map = function(f) {
-            return Right.of(f(this.__value));
-        };
 
         it('Right maps over the Container as normal', () => {
             assert.equal('brain', Right.of('rain').map(str => `b${str}`).__value);
@@ -567,19 +516,6 @@ describe('Functors', () => {
      * IO is used to wrap an impure function and return a pure one (?)
      */
     describe('IO', () => {
-        var IO = function(f) {
-            this.__value = f;
-        };
-
-        IO.of = function(x) {
-            return new IO(function() {
-                return x;
-            });
-        };
-
-        IO.prototype.map = function(f) {
-            return new IO(_.compose(f, this.__value));
-        };
 
         it('can be used to safely manage impure elements', () => {
             var io_window = new IO(() => window);
@@ -598,9 +534,172 @@ describe('Functors', () => {
             document.body.appendChild(div);
 
             const element = $('#myDiv').map(_.head).map(el => el.innerHTML);
+
             assert.equal('I am a div', element.__value());
 
             document.body.removeChild(div);
+        });
+
+        it('can be used to access impure elements', () => {
+
+            // imagine this is the url
+            const window = {
+                location: {
+                    href: 'http://www.com.com/?searchTerm=blah&location=uk'
+                }
+            };
+
+            const url = new IO(() => window.location.href);
+
+            // toPairs :: String -> [[String]]
+            const toPairs = _.compose(_.map(_.split('=')), _.split('&'));
+
+            // params :: String -> [[String]]
+            const params = _.compose(toPairs, _.last, _.split('?'));
+
+            // findParam :: String -> IO Maybe [String]
+            const findParam = key => _.map(_.compose(Maybe.of, _.filter(_.compose(_.equals(key), _.head)), params), url);
+
+            /// Impure code
+
+            const search = findParam('searchTerm').unsafePerformIO();
+
+            assert.deepEqual(['searchTerm', 'blah'], search.__value[0]);
+
+
+        });
+    });
+
+    describe('Task', () => {
+        it('can be used for asynchronous actions', (done) => {
+            var getPost = id => new Task((rej, res) => {
+                setTimeout(() => {
+
+                    id > 0
+                        ? res({
+                            id: 1,
+                            title: 'Love them tasks',
+                        })
+                        : rej('invalid id')
+                }, 300);
+            });
+
+            // compositions and maps can still take place and nothing happens until fork is called
+            const getTitle = getPost(1).map(_.prop('title'));
+            getTitle.fork(console.error, (data) => {
+                assert.equal('Love them tasks', data);
+                done();
+            });
+        });
+        
+        it('does not break flow when Task is rejected', (done) => {
+            var getPost = id => new Task((rej, res) => {
+                setTimeout(() => {
+                    id > 0
+                        ? res({
+                        id: 1,
+                        title: 'Love them tasks',
+                    })
+                        : rej('invalid id')
+                }, 300);
+            });
+
+            // since the Task is rejected, it no longer tries to get the title prop
+            const getInvalidTitle = getPost(-1).map(_.prop('title'));
+            getInvalidTitle.fork((data) => {
+                assert.equal('invalid id', data);
+                done();
+            }, console.log);
+
+
+        });
+    });
+
+    describe('Exercises', () => {
+        it('1 - increment a value in a functor', () => {
+            // Use _.add(x,y) and _.map(f,x) to make a function that increments a value
+            // inside a functor.
+
+            const increment = val => Container.of(val).map(_.add(1));
+
+            const two = increment(1);
+            assert.equal(2, two.__value);
+        });
+
+        it('2 - Use _.head to get the first element of a list', () => {
+            var xs = Container.of(['do', 'ray', 'me', 'fa', 'so', 'la', 'ti', 'do']);
+
+            var firstEl = xs.map(_.head);
+            assert.equal('do', firstEl.__value);
+
+        });
+        
+        it('3 - Use safeProp and _.head to find the first initial of the user.', () => {
+            var safeProp = _.curry(function(x, o) {
+                return Maybe.of(o[x]);
+            });
+
+            var user = {
+                id: 2,
+                name: 'Albert',
+            };
+
+            var nameProp = safeProp('name');
+            var ex3 = nameProp(user).map(_.head);
+            assert.equal('A', ex3.__value);
+
+        });
+        
+        it('4 - Use Maybe to rewrite a function without an if statement.', () => {
+            var ex4 = (n) => {
+                if (n) {
+                    return parseInt(n);
+                }
+            };
+
+            var ex4b = n => Maybe.of(n).map(parseInt);
+
+            assert.equal(5, ex4b('5').__value);
+            assert.equal(null, ex4b(null).__value);
+        });
+        
+        it('5 - Write a function that will getPost then toUpperCase the posts title.', (done) => {
+            var getPost = i => new Task((rej, res) => {
+                setTimeout(() => {
+                    res({
+                        id: i,
+                        title: 'Love them tasks',
+                    });
+                }, 300);
+            });
+
+            /**
+             *  the getPost function is used as if everything will be ok.
+             *  If it is, the title prop is returned, then upper cased.
+             */
+            var uppercasePostTitles = i => getPost(i).map(_.compose(_.toUpper, _.prop('title')));
+
+            /**
+             * when fork is called, 2 functions are supplied for the rejection
+             * or the resolution.
+             */
+            uppercasePostTitles(1).fork(console.error, data => {
+                assert.equal('LOVE THEM TASKS', data);
+                done();
+            });
+        });
+        
+        it('6 - Write a function that uses checkActive() and showWelcome() to grant access or return the error.', () => {
+            var showWelcome = _.compose(_.concat( "Welcome "), _.prop('name'));
+
+            var checkActive = function(user) {
+                return user.active ? Right.of(user) : Left.of('Your account is not active');
+            };
+
+            var login = checkActive.map(showWelcome);
+                // _.compose(showWelcome, checkActive);
+
+            console.log(login({ active: true, name: 'Simon' }));
         });
     });
 });
